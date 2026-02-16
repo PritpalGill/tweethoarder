@@ -128,6 +128,7 @@ def _migrate_sync_progress_add_counter(conn: sqlite3.Connection) -> None:
 
 def init_database(db_path: Path) -> None:
     """Initialize the SQLite database."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(TWEETS_SCHEMA)
         conn.execute(COLLECTIONS_SCHEMA)

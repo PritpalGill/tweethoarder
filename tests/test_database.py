@@ -16,6 +16,15 @@ def _table_exists(db_path: Path, table_name: str) -> bool:
     return result is not None
 
 
+def test_init_database_creates_parent_directories(tmp_path: Path) -> None:
+    """Database initialization should create parent directories if they don't exist."""
+    from tweethoarder.storage.database import init_database
+
+    db_path = tmp_path / "nonexistent" / "subdir" / "test.db"
+    init_database(db_path)
+    assert db_path.exists()
+
+
 def test_init_database_creates_file(tmp_path: Path) -> None:
     """Database initialization should create the SQLite file."""
     from tweethoarder.storage.database import init_database
