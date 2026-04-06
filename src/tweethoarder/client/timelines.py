@@ -13,6 +13,7 @@ from tweethoarder.client.features import (
     build_bookmarks_features,
     build_likes_features,
     build_tweet_detail_features,
+    build_user_by_screen_name_features,
     build_user_tweets_features,
 )
 from tweethoarder.query_ids.constants import TWITTER_API_BASE
@@ -103,6 +104,148 @@ def build_tweet_detail_url(query_id: str, tweet_id: str) -> str:
     return f"{TWITTER_API_BASE}/{query_id}/TweetDetail?{params}"
 
 
+def build_user_by_screen_name_url(query_id: str, screen_name: str) -> str:
+    """Build URL for fetching a user profile by screen name from Twitter GraphQL API."""
+    variables = {
+        "screen_name": screen_name,
+        "withSafetyModeUserFields": True,
+    }
+    features = build_user_by_screen_name_features()
+    field_toggles = {
+        "withAuxiliaryUserLabels": False,
+    }
+    params = urlencode(
+        {
+            "variables": json.dumps(variables, separators=(",", ":")),
+            "features": json.dumps(features, separators=(",", ":")),
+            "fieldToggles": json.dumps(field_toggles, separators=(",", ":")),
+        }
+    )
+    return f"{TWITTER_API_BASE}/{query_id}/UserByScreenName?{params}"
+
+
+async def fetch_user_by_screen_name(
+    client: httpx.AsyncClient,
+    query_id: str,
+    screen_name: str,
+    max_retries: int = 5,
+    base_delay: float = 1.0,
+) -> dict[str, Any]:
+    """Fetch a user profile by screen name from the Twitter GraphQL API.
+
+    Returns the raw JSON response from the API.
+    """
+    max_retries = max(1, max_retries)
+    url = build_user_by_screen_name_url(query_id, screen_name)
+    attempt = 0
+
+    while attempt < max_retries:
+        response = await client.get(url)
+
+        if response.status_code == 429:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2**attempt)
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            response.raise_for_status()
+
+        response.raise_for_status()
+        result: dict[str, Any] = response.json()
+        return result
+
+    raise RuntimeError("Unreachable: retry loop should always return or raise")
+
+
+def build_followers_url(query_id: str, user_id: str, count: int = 20) -> str:
+    """Build URL for fetching a user's followers."""
+    variables = {
+        "userId": user_id,
+        "count": count,
+        "includePromotedContent": False,
+    }
+    features = build_user_by_screen_name_features()
+    params = urlencode(
+        {
+            "variables": json.dumps(variables, separators=(",", ":")),
+            "features": json.dumps(features, separators=(",", ":")),
+        }
+    )
+    return f"{TWITTER_API_BASE}/{query_id}/Followers?{params}"
+
+
+def build_following_url(query_id: str, user_id: str, count: int = 20) -> str:
+    """Build URL for fetching who a user follows."""
+    variables = {
+        "userId": user_id,
+        "count": count,
+        "includePromotedContent": False,
+    }
+    features = build_user_by_screen_name_features()
+    params = urlencode(
+        {
+            "variables": json.dumps(variables, separators=(",", ":")),
+            "features": json.dumps(features, separators=(",", ":")),
+        }
+    )
+    return f"{TWITTER_API_BASE}/{query_id}/Following?{params}"
+
+
+def build_user_highlights_tweets_url(query_id: str, user_id: str, count: int = 20) -> str:
+    """Build URL for fetching a user's highlighted tweets."""
+    variables: dict[str, str | int | bool] = {
+        "userId": user_id,
+        "count": count,
+        "includePromotedContent": True,
+        "withVoice": True,
+    }
+    features = build_user_tweets_features()
+    field_toggles = {
+        "withArticlePlainText": False,
+        "withArticleRichContentState": True,
+        "withAuxiliaryUserLabels": False,
+        "withPayments": False,
+        "withGrokAnalyze": False,
+        "withDisallowedReplyControls": False,
+    }
+    params = urlencode(
+        {
+            "variables": json.dumps(variables, separators=(",", ":")),
+            "features": json.dumps(features, separators=(",", ":")),
+            "fieldToggles": json.dumps(field_toggles, separators=(",", ":")),
+        }
+    )
+    return f"{TWITTER_API_BASE}/{query_id}/UserHighlightsTweets?{params}"
+
+
+async def fetch_single_page(
+    client: httpx.AsyncClient,
+    url: str,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> dict[str, Any]:
+    """Generic single-page fetch with retry on rate limit."""
+    max_retries = max(1, max_retries)
+    attempt = 0
+
+    while attempt < max_retries:
+        response = await client.get(url)
+
+        if response.status_code == 429:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2**attempt)
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            response.raise_for_status()
+
+        response.raise_for_status()
+        result: dict[str, Any] = response.json()
+        return result
+
+    raise RuntimeError("Unreachable: retry loop should always return or raise")
+
+
 async def fetch_tweet_detail_page(
     client: httpx.AsyncClient,
     query_id: str,
@@ -182,11 +325,13 @@ def build_bookmarks_url(query_id: str, cursor: str | None = None) -> str:
     return f"{TWITTER_API_BASE}/{query_id}/Bookmarks?{params}"
 
 
-def build_user_tweets_url(query_id: str, user_id: str, cursor: str | None = None) -> str:
+def build_user_tweets_url(
+    query_id: str, user_id: str, cursor: str | None = None, count: int = 20
+) -> str:
     """Build URL for fetching user tweets from Twitter GraphQL API."""
     variables: dict[str, str | int | bool] = {
         "userId": user_id,
-        "count": 20,
+        "count": count,
         "includePromotedContent": True,
         "withQuickPromoteEligibilityTweetFields": True,
         "withVoice": True,
@@ -214,12 +359,12 @@ def build_user_tweets_url(query_id: str, user_id: str, cursor: str | None = None
 
 
 def build_user_tweets_and_replies_url(
-    query_id: str, user_id: str, cursor: str | None = None
+    query_id: str, user_id: str, cursor: str | None = None, count: int = 20
 ) -> str:
     """Build URL for fetching user tweets and replies from Twitter GraphQL API."""
     variables: dict[str, str | int | bool] = {
         "userId": user_id,
-        "count": 20,
+        "count": count,
         "includePromotedContent": True,
         "withCommunity": False,
         "withVoice": True,
