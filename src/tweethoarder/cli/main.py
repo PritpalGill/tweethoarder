@@ -44,6 +44,54 @@ def thread(
     typer.echo(f"Saved {result['tweet_count']} tweets.")
 
 
+@app.command()
+def user(
+    screen_name: str = typer.Argument(..., help="Twitter screen name (without @)."),
+    raw: bool = typer.Option(False, "--raw", "-r", help="Print raw JSON response."),
+) -> None:
+    """Fetch a user profile by screen name."""
+    import asyncio
+    import json
+    from typing import Any
+
+    import httpx
+
+    from tweethoarder.auth.cookies import resolve_cookies
+    from tweethoarder.client.base import TwitterClient
+    from tweethoarder.client.timelines import fetch_user_by_screen_name
+    from tweethoarder.query_ids.store import QueryIdStore, get_query_id_with_fallback
+
+    async def run() -> dict[str, Any]:
+        cookies = resolve_cookies()
+        tc = TwitterClient(cookies)
+        store = QueryIdStore(get_config_dir() / "query-ids-cache.json")
+        query_id = get_query_id_with_fallback(store, "UserByScreenName")
+        async with httpx.AsyncClient(headers=tc.get_base_headers(), timeout=30) as client:
+            data: dict[str, Any] = await fetch_user_by_screen_name(client, query_id, screen_name)
+            return data
+
+    result = asyncio.run(run())
+    if raw:
+        typer.echo(json.dumps(result, indent=2))
+    else:
+        user_result = result.get("data", {}).get("user", {}).get("result", {})
+        if not user_result:
+            typer.echo("User not found.")
+            raise typer.Exit(1)
+        core = user_result.get("core", {})
+        legacy = user_result.get("legacy", {})
+        typer.echo(f"@{core.get('screen_name', 'unknown')}")
+        typer.echo(f"  Name: {core.get('name', '?')}")
+        typer.echo(f"  ID: {user_result.get('rest_id', '?')}")
+        typer.echo(f"  Followers: {legacy.get('followers_count', '?')}")
+        typer.echo(f"  Following: {legacy.get('friends_count', '?')}")
+        typer.echo(f"  Tweets: {legacy.get('statuses_count', '?')}")
+        typer.echo(f"  Created: {core.get('created_at', '?')}")
+        desc = legacy.get("description", "")
+        if desc:
+            typer.echo(f"  Bio: {desc[:100]}")
+
+
 @app.command(name="refresh-ids")
 def refresh_ids_command() -> None:
     """Refresh Twitter GraphQL query IDs."""

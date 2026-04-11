@@ -29,6 +29,8 @@ FALLBACK_QUERY_IDS: dict[str, str] = {
     "Following": "BEkNpEt5pNETESoqMsTEGA",
     "Followers": "kuFUYP9eV1FPoEy4N-pi7w",
     "HomeLatestTimeline": "iOEZpOdfekFsxSlPQCQtPg",
+    "UserByScreenName": "xmU6X_CKVnQ5lSrCbAmJsg",
+    "UserHighlightsTweets": "tiFMbGHqHkzmL74fSDNzGA",
 }
 
 TARGET_QUERY_ID_OPERATIONS: list[str] = list(FALLBACK_QUERY_IDS.keys())

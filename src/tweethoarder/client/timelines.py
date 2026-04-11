@@ -882,6 +882,18 @@ def parse_user_tweets_response(
                             "sort_index": entry.get("sortIndex"),
                         }
                     )
+            elif entry_id.startswith("profile-conversation-"):
+                # UserTweetsAndReplies wraps reply threads in module entries
+                for item in content.get("items", []):
+                    item_content = item.get("item", {}).get("itemContent", {})
+                    tweet_result = item_content.get("tweet_results", {}).get("result")
+                    if tweet_result:
+                        entries.append(
+                            {
+                                "tweet": tweet_result,
+                                "sort_index": entry.get("sortIndex"),
+                            }
+                        )
             elif entry_id.startswith("cursor-bottom-"):
                 cursor = content.get("value")
 

@@ -81,3 +81,21 @@ def build_tweet_detail_features() -> dict[str, bool]:
 def build_user_tweets_features() -> dict[str, bool]:
     """Build feature flags for UserTweets and UserTweetsAndReplies requests."""
     return build_timeline_features()
+
+
+def build_user_by_screen_name_features() -> dict[str, bool]:
+    """Build feature flags for UserByScreenName requests."""
+    return {
+        "hidden_profile_subscriptions_enabled": True,
+        "rweb_tipjar_consumption_enabled": True,
+        "responsive_web_graphql_exclude_directive_enabled": True,
+        "verified_phone_label_enabled": False,
+        "subscriptions_verification_info_is_identity_verified_enabled": True,
+        "subscriptions_verification_info_verified_since_enabled": True,
+        "highlights_tweets_tab_ui_enabled": True,
+        "responsive_web_twitter_article_notes_tab_enabled": True,
+        "subscriptions_feature_can_gift_premium": True,
+        "creator_subscriptions_tweet_preview_api_enabled": True,
+        "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+        "responsive_web_graphql_timeline_navigation_enabled": True,
+    }
