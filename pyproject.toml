@@ -122,6 +122,13 @@ module = "tests.*"
 ignore_missing_imports = true
 check_untyped_defs = true
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+exclude = [".git", ".ruff_cache", ".venv", ".vscode"]
+
 [tool.coverage.run]
 source = ["src"]
 omit = ["tests/*", "*/__init__.py"]
