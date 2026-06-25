@@ -74,6 +74,22 @@ def test_export_includes_media(make_tweet: Any) -> None:
     assert media[0]["url"] == "https://pbs.twimg.com/media/xxx.jpg"
 
 
+def test_export_includes_urls(make_tweet: Any) -> None:
+    """Export includes expanded URLs from the tweet metadata."""
+    urls_json = (
+        '[{"url": "https://t.co/abc123", '
+        '"expanded_url": "https://example.com/article", '
+        '"display_url": "example.com/article"}]'
+    )
+    tweets = [make_tweet(text="https://t.co/abc123", urls_json=urls_json)]
+    result = export_tweets_to_json(tweets=tweets)
+    urls = result["tweets"][0]["urls"]
+    assert len(urls) == 1
+    assert urls[0]["url"] == "https://t.co/abc123"
+    assert urls[0]["expanded_url"] == "https://example.com/article"
+    assert urls[0]["display_url"] == "example.com/article"
+
+
 def test_export_includes_quoted_tweet(make_tweet: Any) -> None:
     """Export includes quoted tweet when present."""
     quoted_tweet = make_tweet(

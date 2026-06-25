@@ -74,6 +74,56 @@ def test_export_json_writes_file(tmp_path: Path, monkeypatch: object) -> None:
     assert "testuser" in content
 
 
+def test_export_json_collection_all_includes_collection_types(tmp_path: Path) -> None:
+    """Export json with --collection all should include every tweet's collection types."""
+    from json import loads
+    from unittest.mock import patch
+
+    mock_tweets = [
+        {
+            "id": "1",
+            "text": "Liked and bookmarked tweet",
+            "author_id": "user1",
+            "author_username": "testuser",
+            "author_display_name": "Test User",
+            "created_at": "2025-01-01T12:00:00Z",
+            "collection_types": ["like", "bookmark"],
+        },
+        {
+            "id": "2",
+            "text": "My own tweet",
+            "author_id": "user2",
+            "author_username": "otheruser",
+            "author_display_name": "Other User",
+            "created_at": "2025-01-02T12:00:00Z",
+            "collection_types": ["tweet"],
+        },
+    ]
+    output_path = tmp_path / "output.json"
+
+    with (
+        patch("tweethoarder.config.get_data_dir") as mock_data_dir,
+        patch("tweethoarder.storage.database.get_all_tweets_with_collection_types") as mock_get_all,
+        patch("tweethoarder.storage.database.get_tweets_by_collection") as mock_get_collection,
+    ):
+        mock_data_dir.return_value = tmp_path
+        mock_get_all.return_value = mock_tweets
+        mock_get_collection.return_value = []
+
+        result = runner.invoke(
+            app,
+            ["export", "json", "--collection", "all", "--output", str(output_path)],
+        )
+
+    assert result.exit_code == 0
+    mock_get_all.assert_called_once_with(tmp_path / "tweethoarder.db")
+    mock_get_collection.assert_not_called()
+    content = loads(output_path.read_text())
+    assert content["collection"] == "all"
+    assert content["tweets"][0]["collection_types"] == ["like", "bookmark"]
+    assert content["tweets"][1]["collection_types"] == ["tweet"]
+
+
 def test_export_markdown_command_exists() -> None:
     """Export markdown subcommand should be available."""
     result = runner.invoke(app, ["export", "markdown", "--help"])

@@ -662,6 +662,61 @@ def test_extract_tweet_data_extracts_urls_json() -> None:
     assert urls[0]["expanded_url"] == "https://example.com/page"
 
 
+def test_extract_tweet_data_extracts_article_card_url() -> None:
+    """extract_tweet_data should extract article URLs from tweet card metadata."""
+    from tweethoarder.client.timelines import extract_tweet_data
+
+    raw_tweet = {
+        "rest_id": "123",
+        "core": {
+            "user_results": {
+                "result": {
+                    "rest_id": "456",
+                    "core": {"screen_name": "user", "name": "User"},
+                }
+            }
+        },
+        "legacy": {
+            "full_text": "https://t.co/article",
+            "created_at": "Wed Jan 01 12:00:00 +0000 2025",
+            "conversation_id_str": "123",
+        },
+        "card": {
+            "legacy": {
+                "binding_values": [
+                    {
+                        "key": "card_url",
+                        "value": {"string_value": "https://t.co/article"},
+                    },
+                    {
+                        "key": "expanded_url",
+                        "value": {"string_value": "https://example.com/article"},
+                    },
+                    {
+                        "key": "title",
+                        "value": {"string_value": "Example article"},
+                    },
+                    {
+                        "key": "description",
+                        "value": {"string_value": "A useful article preview"},
+                    },
+                ]
+            }
+        },
+    }
+
+    result = extract_tweet_data(raw_tweet)
+
+    assert result["urls_json"] is not None
+    import json
+
+    urls = json.loads(result["urls_json"])
+    assert len(urls) == 1
+    assert urls[0]["url"] == "https://t.co/article"
+    assert urls[0]["expanded_url"] == "https://example.com/article"
+    assert urls[0]["title"] == "Example article"
+
+
 def test_extract_tweet_data_extracts_media_json() -> None:
     """extract_tweet_data should extract media from extended_entities."""
     from tweethoarder.client.timelines import extract_tweet_data
