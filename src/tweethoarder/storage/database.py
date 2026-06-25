@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tweets (
     urls_json TEXT,
     hashtags_json TEXT,
     mentions_json TEXT,
+    article_json TEXT,
     raw_json TEXT,
     first_seen_at TEXT NOT NULL,
     last_updated_at TEXT NOT NULL,
@@ -126,6 +127,14 @@ def _migrate_sync_progress_add_counter(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sync_progress ADD COLUMN sort_index_counter TEXT")
 
 
+def _migrate_tweets_add_article_json(conn: sqlite3.Connection) -> None:
+    """Add article_json column to tweets table if it doesn't exist."""
+    cursor = conn.execute("PRAGMA table_info(tweets)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "article_json" not in columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_json TEXT")
+
+
 def init_database(db_path: Path) -> None:
     """Initialize the SQLite database."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,6 +149,7 @@ def init_database(db_path: Path) -> None:
             conn.execute(index_sql)
         # Run migrations for existing databases
         _migrate_sync_progress_add_counter(conn)
+        _migrate_tweets_add_article_json(conn)
         conn.commit()
 
 
@@ -170,8 +180,8 @@ def save_tweet(db_path: Path, tweet_data: dict[str, Any]) -> None:
                 in_reply_to_tweet_id, in_reply_to_user_id,
                 is_retweet, retweeted_tweet_id,
                 reply_count, retweet_count, like_count, quote_count,
-                urls_json, media_json, raw_json, first_seen_at, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                urls_json, media_json, article_json, raw_json, first_seen_at, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 text = excluded.text,
                 author_id = excluded.author_id,
@@ -199,6 +209,7 @@ def save_tweet(db_path: Path, tweet_data: dict[str, Any]) -> None:
                 quote_count = excluded.quote_count,
                 urls_json = COALESCE(excluded.urls_json, tweets.urls_json),
                 media_json = COALESCE(excluded.media_json, tweets.media_json),
+                article_json = COALESCE(excluded.article_json, tweets.article_json),
                 raw_json = COALESCE(excluded.raw_json, tweets.raw_json),
                 last_updated_at = excluded.last_updated_at
             """,
@@ -222,6 +233,7 @@ def save_tweet(db_path: Path, tweet_data: dict[str, Any]) -> None:
                 tweet_data.get("quote_count", 0),
                 tweet_data.get("urls_json"),
                 tweet_data.get("media_json"),
+                tweet_data.get("article_json"),
                 tweet_data.get("raw_json"),
                 now,
                 now,

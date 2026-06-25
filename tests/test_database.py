@@ -620,6 +620,36 @@ def test_save_tweet_stores_media_json(tmp_path: Path) -> None:
     assert "pbs.twimg.com" in row[0]
 
 
+def test_save_tweet_stores_article_json(tmp_path: Path) -> None:
+    """save_tweet should store native article content."""
+    from tweethoarder.storage.database import init_database, save_tweet
+
+    db_path = tmp_path / "test.db"
+    init_database(db_path)
+
+    save_tweet(
+        db_path,
+        {
+            "id": "123",
+            "text": "Read my article",
+            "author_id": "456",
+            "author_username": "user",
+            "created_at": "2025-01-01T12:00:00Z",
+            "article_json": '{"title": "Native X Article", "text": "Full article body"}',
+        },
+    )
+
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.execute("SELECT article_json FROM tweets WHERE id = ?", ("123",))
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row[0] is not None
+    assert "Full article body" in row[0]
+
+
 def test_get_tweets_by_collection_returns_media_json(tmp_path: Path) -> None:
     """get_tweets_by_collection should return media_json field in results."""
     from tweethoarder.storage.database import (

@@ -90,6 +90,17 @@ def test_export_includes_urls(make_tweet: Any) -> None:
     assert urls[0]["display_url"] == "example.com/article"
 
 
+def test_export_includes_native_article(make_tweet: Any) -> None:
+    """Export includes native X article content from JSON field."""
+    article_json = '{"id": "article-123", "title": "Native X Article", "text": "Full article body"}'
+    tweets = [make_tweet(article_json=article_json)]
+    result = export_tweets_to_json(tweets=tweets)
+    article = result["tweets"][0]["article"]
+    assert article["id"] == "article-123"
+    assert article["title"] == "Native X Article"
+    assert article["text"] == "Full article body"
+
+
 def test_export_includes_quoted_tweet(make_tweet: Any) -> None:
     """Export includes quoted tweet when present."""
     quoted_tweet = make_tweet(

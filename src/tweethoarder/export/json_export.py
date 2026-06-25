@@ -30,6 +30,8 @@ def _format_tweet(
         formatted["media"] = json.loads(tweet["media_json"])
     if tweet.get("urls_json"):
         formatted["urls"] = json.loads(tweet["urls_json"])
+    if tweet.get("article_json"):
+        formatted["article"] = json.loads(tweet["article_json"])
     if "collection_types" in tweet:
         formatted["collection_types"] = tweet["collection_types"]
     quoted_id = tweet.get("quoted_tweet_id")
