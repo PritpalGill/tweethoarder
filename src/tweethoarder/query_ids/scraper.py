@@ -67,7 +67,10 @@ def extract_operations(bundle_content: str, targets: set[str]) -> dict[str, str]
 
 
 _HTML_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
@@ -99,9 +102,7 @@ async def refresh_query_ids(
     if cookies:
         html_headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-    async with httpx.AsyncClient(
-        headers=html_headers, follow_redirects=True
-    ) as html_client:
+    async with httpx.AsyncClient(headers=html_headers, follow_redirects=True) as html_client:
         bundle_urls: list[str] = []
         for page in discovery_pages:
             response = await html_client.get(page)
