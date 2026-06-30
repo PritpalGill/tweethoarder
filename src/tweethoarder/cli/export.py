@@ -16,7 +16,7 @@ def json(
     collection: str | None = typer.Option(
         None,
         "--collection",
-        help="Filter by collection type (likes, bookmarks, tweets, reposts, replies, posts).",
+        help="Filter by collection type (likes, bookmarks, tweets, reposts, replies, posts, all).",
     ),
     folder: str | None = typer.Option(
         None,
@@ -36,6 +36,7 @@ def json(
     from tweethoarder.export.json_export import export_tweets_to_json
     from tweethoarder.storage.database import (
         get_all_tweets,
+        get_all_tweets_with_collection_types,
         get_tweets_by_bookmark_folder,
         get_tweets_by_collection,
         get_tweets_by_collections,
@@ -46,7 +47,9 @@ def json(
     collection_type = COLLECTION_MAP.get(collection, collection) if collection else None
 
     tweets: list[dict[str, Any]]
-    if folder and collection_type == "bookmark":
+    if collection_type == "all":
+        tweets = get_all_tweets_with_collection_types(db_path)
+    elif folder and collection_type == "bookmark":
         tweets = get_tweets_by_bookmark_folder(db_path, folder)
     elif isinstance(collection_type, list):
         # Combined collection (e.g., "posts" = tweets + replies + reposts)

@@ -24,6 +24,18 @@ if TYPE_CHECKING:
 TWITTER_DATE_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 
 
+def _build_article_field_toggles() -> dict[str, bool]:
+    """Build field toggles that request native X article content."""
+    return {
+        "withArticlePlainText": True,
+        "withArticleRichContentState": True,
+        "withAuxiliaryUserLabels": False,
+        "withPayments": False,
+        "withGrokAnalyze": False,
+        "withDisallowedReplyControls": False,
+    }
+
+
 def _strip_media_item(media_item: dict[str, Any]) -> dict[str, Any]:
     """Strip unnecessary fields from a media item, keeping only what we need for display."""
     # Get dimensions from original_info if available
@@ -57,14 +69,152 @@ def _strip_urls(urls: list[dict[str, Any]] | None) -> list[dict[str, Any]] | Non
     """Strip unnecessary fields from URLs list, keeping only what we need."""
     if not urls:
         return None
-    return [
-        {
+    stripped_urls = []
+    for u in urls:
+        stripped = {
             "url": u.get("url"),
             "expanded_url": u.get("expanded_url"),
             "display_url": u.get("display_url"),
         }
-        for u in urls
-    ]
+        if u.get("title"):
+            stripped["title"] = u.get("title")
+        if u.get("description"):
+            stripped["description"] = u.get("description")
+        stripped_urls.append(stripped)
+    return stripped_urls
+
+
+def _extract_card_binding_string(value: Any) -> str | None:
+    """Extract a string value from Twitter card binding metadata."""
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict):
+        return None
+    string_value = value.get("string_value")
+    return string_value if isinstance(string_value, str) else None
+
+
+def _get_card_binding_values(card: dict[str, Any] | None) -> dict[str, str]:
+    """Return Twitter card binding values keyed by binding name."""
+    if not card:
+        return {}
+    binding_values = card.get("legacy", {}).get("binding_values", [])
+    values: dict[str, str] = {}
+    if isinstance(binding_values, list):
+        for item in binding_values:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("key")
+            value = _extract_card_binding_string(item.get("value"))
+            if isinstance(key, str) and value:
+                values[key] = value
+    elif isinstance(binding_values, dict):
+        for key, raw_value in binding_values.items():
+            value = _extract_card_binding_string(raw_value)
+            if isinstance(key, str) and value:
+                values[key] = value
+    return values
+
+
+def _is_http_url(value: str | None) -> bool:
+    """Return True when a string looks like a web URL."""
+    return bool(value and value.startswith(("http://", "https://")))
+
+
+def _extract_card_url(card: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Extract article/card URL metadata from a tweet card."""
+    values = _get_card_binding_values(card)
+    if not values:
+        return None
+
+    expanded_url = next(
+        (
+            values[key]
+            for key in ("expanded_url", "url", "card_url")
+            if _is_http_url(values.get(key))
+        ),
+        None,
+    )
+    if not expanded_url:
+        return None
+
+    card_url = values.get("card_url")
+    display_url = values.get("display_url") or values.get("vanity_url") or values.get("domain")
+    article_url = {
+        "url": card_url if _is_http_url(card_url) else expanded_url,
+        "expanded_url": expanded_url,
+        "display_url": display_url,
+    }
+    if values.get("title"):
+        article_url["title"] = values["title"]
+    if values.get("description"):
+        article_url["description"] = values["description"]
+    return article_url
+
+
+def _merge_card_url(
+    urls: list[dict[str, Any]] | None,
+    card_url: dict[str, Any] | None,
+) -> list[dict[str, Any]] | None:
+    """Merge card URL metadata into entity URLs without duplicating the same target."""
+    merged = list(urls or [])
+    if card_url and not any(
+        u.get("url") == card_url.get("url") or u.get("expanded_url") == card_url.get("expanded_url")
+        for u in merged
+    ):
+        merged.append(card_url)
+    return merged or None
+
+
+def _get_nested_dict(data: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None:
+    """Return a nested dictionary by path when every path segment exists."""
+    current: Any = data
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current if isinstance(current, dict) else None
+
+
+def _first_string(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    """Return the first non-empty string value for any of the given keys."""
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _extract_native_article(article_container: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Extract normalized native X article content from a tweet result."""
+    if not article_container:
+        return None
+
+    article = (
+        _get_nested_dict(article_container, ("article_results", "result"))
+        or _get_nested_dict(article_container, ("articleResults", "result"))
+        or _get_nested_dict(article_container, ("result",))
+        or article_container
+    )
+
+    article_text = _first_string(
+        article,
+        ("plain_text", "plainText", "body_text", "bodyText", "text", "body"),
+    )
+    if not article_text:
+        return None
+
+    normalized: dict[str, Any] = {"text": article_text}
+    article_id = _first_string(article, ("rest_id", "id", "article_id", "articleId"))
+    if article_id:
+        normalized["id"] = article_id
+    title = _first_string(article, ("title", "headline"))
+    if title:
+        normalized["title"] = title
+    preview_text = _first_string(article, ("preview_text", "previewText", "description"))
+    if preview_text:
+        normalized["preview_text"] = preview_text
+    return normalized
 
 
 def _strip_hashtags(
@@ -95,10 +245,12 @@ def build_tweet_detail_url(query_id: str, tweet_id: str) -> str:
         "includePromotedContent": True,
     }
     features = build_tweet_detail_features()
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables),
             "features": json.dumps(features),
+            "fieldToggles": json.dumps(field_toggles),
         }
     )
     return f"{TWITTER_API_BASE}/{query_id}/TweetDetail?{params}"
@@ -200,14 +352,7 @@ def build_user_highlights_tweets_url(query_id: str, user_id: str, count: int = 2
         "withVoice": True,
     }
     features = build_user_tweets_features()
-    field_toggles = {
-        "withArticlePlainText": False,
-        "withArticleRichContentState": True,
-        "withAuxiliaryUserLabels": False,
-        "withPayments": False,
-        "withGrokAnalyze": False,
-        "withDisallowedReplyControls": False,
-    }
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables, separators=(",", ":")),
@@ -316,10 +461,12 @@ def build_bookmarks_url(query_id: str, cursor: str | None = None) -> str:
     if cursor:
         variables["cursor"] = cursor
     features = build_bookmarks_features()
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables),
             "features": json.dumps(features),
+            "fieldToggles": json.dumps(field_toggles),
         }
     )
     return f"{TWITTER_API_BASE}/{query_id}/Bookmarks?{params}"
@@ -340,14 +487,7 @@ def build_user_tweets_url(
     if cursor:
         variables["cursor"] = cursor
     features = build_user_tweets_features()
-    field_toggles = {
-        "withArticlePlainText": False,
-        "withArticleRichContentState": True,
-        "withAuxiliaryUserLabels": False,
-        "withPayments": False,
-        "withGrokAnalyze": False,
-        "withDisallowedReplyControls": False,
-    }
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables, separators=(",", ":")),
@@ -373,14 +513,7 @@ def build_user_tweets_and_replies_url(
     if cursor:
         variables["cursor"] = cursor
     features = build_user_tweets_features()
-    field_toggles = {
-        "withArticlePlainText": False,
-        "withArticleRichContentState": True,
-        "withAuxiliaryUserLabels": False,
-        "withPayments": False,
-        "withGrokAnalyze": False,
-        "withDisallowedReplyControls": False,
-    }
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables, separators=(",", ":")),
@@ -401,7 +534,14 @@ def build_home_timeline_url(query_id: str, cursor: str | None = None) -> str:
     if cursor:
         variables["cursor"] = cursor
     features = build_likes_features()
-    params = urlencode({"variables": json.dumps(variables), "features": json.dumps(features)})
+    field_toggles = _build_article_field_toggles()
+    params = urlencode(
+        {
+            "variables": json.dumps(variables),
+            "features": json.dumps(features),
+            "fieldToggles": json.dumps(field_toggles),
+        }
+    )
     return f"{TWITTER_API_BASE}/{query_id}/HomeLatestTimeline?{params}"
 
 
@@ -530,10 +670,12 @@ def build_likes_url(query_id: str, user_id: str, cursor: str | None = None) -> s
     if cursor:
         variables["cursor"] = cursor
     features = build_likes_features()
+    field_toggles = _build_article_field_toggles()
     params = urlencode(
         {
             "variables": json.dumps(variables),
             "features": json.dumps(features),
+            "fieldToggles": json.dumps(field_toggles),
         }
     )
     return f"{TWITTER_API_BASE}/{query_id}/Likes?{params}"
@@ -1142,7 +1284,9 @@ def extract_tweet_data(raw_tweet: dict[str, Any]) -> dict[str, Any] | None:
             "quoted_status_id_str"
         )
 
-    urls = entities.get("urls")
+    source_tweet = retweet_result if is_retweet else raw_tweet
+    urls = _merge_card_url(entities.get("urls"), _extract_card_url(source_tweet.get("card")))
+    article = _extract_native_article(source_tweet.get("article"))
     media = extended_entities.get("media")
     hashtags = entities.get("hashtags")
     mentions = entities.get("user_mentions")
@@ -1163,6 +1307,7 @@ def extract_tweet_data(raw_tweet: dict[str, Any]) -> dict[str, Any] | None:
         "retweeted_tweet_id": retweet_result.get("rest_id") if is_retweet else None,
         "retweeter_username": retweeter_username,
         "urls_json": json.dumps(_strip_urls(urls)) if urls else None,
+        "article_json": json.dumps(article, ensure_ascii=False) if article else None,
         "media_json": json.dumps(_strip_media(media)) if media else None,
         "hashtags_json": json.dumps(_strip_hashtags(hashtags)) if hashtags else None,
         "mentions_json": json.dumps(_strip_mentions(mentions)) if mentions else None,
